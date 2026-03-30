@@ -7,7 +7,6 @@
 # Build Arguments
 ################################################################################
 ARG GO_BUILDER_IMAGE=registry.access.redhat.com/ubi9/go-toolset:1.25.7
-ARG JDK_IMAGE=registry.redhat.io/ubi9/openjdk-21:latest
 ARG BASE_IMAGE=quay.io/aipcc/base-images/cpu:3.4.0-1773328752
 
 ################################################################################
@@ -33,24 +32,19 @@ RUN --mount=type=cache,target=/go/pkg/mod/ \
     CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} GO111MODULE=on make build-operator
 
 ################################################################################
-# Stage 2: JDK source (provides Java 21)
-################################################################################
-FROM ${JDK_IMAGE} AS jdk
-
-################################################################################
-# Stage 3: Runtime image
+# Stage 2: Runtime image
 ################################################################################
 FROM ${BASE_IMAGE}
 
 LABEL name="spark-operator" \
       summary="Spark Operator for OpenShift" \
-      description="Kubeflow Spark Operator built on AIPCC base with Java 21 and PySpark 4.0.1" \
+      description="Kubeflow Spark Operator built on AIPCC base with Java 17 and PySpark 4.0.1" \
       io.k8s.display-name="Spark Operator" \
       io.k8s.description="Operator for managing Apache Spark applications on OpenShift"
 
 ARG SPARK_UID=185
+ARG SPARK_GID=185
 ARG PYSPARK_VERSION=4.0.1
-ARG PYSPARK_INDEX_URL=https://packages.redhat.com/api/pypi/public-rhai/rhoai/3.4-EA2/cpu-ubi9/simple/
 
 USER 0
 
@@ -71,34 +65,40 @@ RUN if getent group "${SPARK_UID}" > /dev/null 2>&1; then \
     mkdir -p /home/spark && \
     chown spark:spark /home/spark
 
-# Copy Java 21 from the JDK stage.
-# /etc/crypto-policies and /etc/pki/java are inherited from the base image
-# to avoid cross-lineage TLS/FIPS policy drift.
-COPY --from=jdk /usr/lib/jvm/java-21-openjdk /usr/lib/jvm/java-21-openjdk
-COPY --from=jdk /usr/share/javazi-1.8 /usr/share/javazi-1.8
-COPY --from=jdk /etc/java /etc/java
-
-ENV JAVA_HOME=/usr/lib/jvm/java-21-openjdk
-ENV PATH="${JAVA_HOME}/bin:${PATH}"
-
-# Install tini from EPEL
-RUN dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm && \
-    dnf install -y tini && \
+# Install Java 17, tini.
+# The AIPCC base image does not ship Java; add UBI9 repos
+# (publicly accessible, no entitlement required) so dnf can resolve OpenJDK
+# and all its dependencies (cups-libs, lksctp-tools, etc.).
+RUN printf '[ubi-9-baseos]\n\
+name=UBI 9 BaseOS\n\
+baseurl=https://cdn-ubi.redhat.com/content/public/ubi/dist/ubi9/9/$basearch/baseos/os\n\
+enabled=1\n\
+gpgcheck=0\n\
+\n\
+[ubi-9-appstream]\n\
+name=UBI 9 AppStream\n\
+baseurl=https://cdn-ubi.redhat.com/content/public/ubi/dist/ubi9/9/$basearch/appstream/os\n\
+enabled=1\n\
+gpgcheck=0\n' > /etc/yum.repos.d/ubi-9.repo && \
+    dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm && \
+    dnf install -y java-17-openjdk-devel tini && \
     dnf clean all && rm -rf /var/cache/dnf/* && \
-    java -version 2>&1 | grep "21\." && \
     tini --version
 
-# Install PySpark from Red Hat's internal PyPI index
-RUN pip3 install --no-cache-dir \
-    --index-url ${PYSPARK_INDEX_URL} \
-    pyspark==${PYSPARK_VERSION}
+ENV JAVA_HOME="/usr/lib/jvm/java-17" \
+    JAVA_VENDOR="openjdk" \
+    JAVA_VERSION="17"
+ENV PATH="${JAVA_HOME}/bin:${PATH}"
+
+# Install PySpark (AIPCC base image pip config points to Red Hat registry)
+RUN pip3 install --no-cache-dir pyspark==${PYSPARK_VERSION}
 
 # Copy Spark distribution to /opt/spark
 ENV SPARK_HOME=/opt/spark
 RUN PYSPARK_DIR=$(python3 -c "import pyspark; import os; print(os.path.dirname(pyspark.__file__))") && \
     cp -r "${PYSPARK_DIR}" /opt/spark && \
     mkdir -p /opt/spark/work-dir /opt/spark/logs && \
-    touch /opt/spark/RELEASE && \
+    echo "Spark ${PYSPARK_VERSION} (PySpark)" > /opt/spark/RELEASE && \
     chown -R spark:spark /opt/spark/work-dir /opt/spark/logs /opt/spark/RELEASE
 
 ENV PATH="${PATH}:${SPARK_HOME}/bin:${SPARK_HOME}/sbin"
@@ -116,9 +116,9 @@ RUN chgrp -R 0 /opt/spark/work-dir /opt/spark/logs /etc/k8s-webhook-server && \
 # Copy the operator binary from builder stage
 COPY --from=builder /workspace/bin/spark-operator /usr/bin/spark-operator
 
-# Copy operator entrypoint
-COPY --chmod=0755 entrypoint.sh /usr/bin/
+# Copy unified ODH entrypoint (handles operator + Spark driver/executor commands)
+COPY --chmod=0755 examples/openshift/entrypoint-odh.sh /usr/bin/entrypoint.sh
 
-USER ${SPARK_UID}
+USER ${SPARK_UID}:${SPARK_GID}
 
 ENTRYPOINT ["/usr/bin/entrypoint.sh"]
