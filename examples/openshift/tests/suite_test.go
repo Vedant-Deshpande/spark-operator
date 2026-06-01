@@ -168,23 +168,27 @@ var _ = BeforeSuite(func() {
 	rbacPath := filepath.Join("..", "k8s", "base", "rbac.yaml")
 	applyYAMLFile(rbacPath)
 
-	// Add Helm repository
-	By("Adding Helm repository: " + HelmRepoURL)
-	addHelmRepo()
+	if os.Getenv("SKIP_OPERATOR_INSTALL") == "true" {
+		logf.Log.Info("SKIP_OPERATOR_INSTALL=true: Assuming Spark operator is already installed on the cluster")
+	} else {
+		// Add Helm repository
+		By("Adding Helm repository: " + HelmRepoURL)
+		addHelmRepo()
 
-	// Install chart from remote repository
-	By("Installing Spark operator from remote Helm repository")
-	installChartFromRepo()
+		// Install chart from remote repository
+		By("Installing Spark operator from remote Helm repository")
+		installChartFromRepo()
 
-	// Wait for webhooks
-	By("Waiting for webhooks to be ready")
-	mutatingWebhookKey := types.NamespacedName{Name: MutatingWebhookName}
-	validatingWebhookKey := types.NamespacedName{Name: ValidatingWebhookName}
-	Expect(waitForMutatingWebhookReady(context.Background(), mutatingWebhookKey)).NotTo(HaveOccurred())
-	Expect(waitForValidatingWebhookReady(context.Background(), validatingWebhookKey)).NotTo(HaveOccurred())
+		// Wait for webhooks
+		By("Waiting for webhooks to be ready")
+		mutatingWebhookKey := types.NamespacedName{Name: MutatingWebhookName}
+		validatingWebhookKey := types.NamespacedName{Name: ValidatingWebhookName}
+		Expect(waitForMutatingWebhookReady(context.Background(), mutatingWebhookKey)).NotTo(HaveOccurred())
+		Expect(waitForValidatingWebhookReady(context.Background(), validatingWebhookKey)).NotTo(HaveOccurred())
 
-	// Give webhooks time to initialize
-	time.Sleep(10 * time.Second)
+		// Give webhooks time to initialize
+		time.Sleep(10 * time.Second)
+	}
 
 	By("OpenShift test environment setup complete")
 })
@@ -201,9 +205,11 @@ var _ = AfterSuite(func() {
 		logf.Log.Info("SKIP_NAMESPACE_CLEANUP=true: Skipping namespace cleanup to allow result download")
 	}
 
-	// Uninstall Helm release
-	By("Uninstalling Spark operator Helm release")
-	uninstallChart()
+	if os.Getenv("SKIP_OPERATOR_INSTALL") != "true" {
+		// Uninstall Helm release
+		By("Uninstalling Spark operator Helm release")
+		uninstallChart()
+	}
 
 	// Delete namespaces (unless skipped)
 	if !skipNamespaceCleanup {
