@@ -5,6 +5,9 @@ This document defines the contract between the **opendatahub-operator**
 manifests.  It is the reference for both teams: changes to either side that
 violate this contract must be coordinated.
 
+See also: [Kustomize Installation Guide](kustomize-installation.md) for
+standalone (non-ODH) deployment.
+
 ## Overview
 
 The opendatahub-operator does **not** install the Spark Operator directly.
@@ -19,25 +22,33 @@ Instead it runs a component controller called `spark-operator-module`
 ## Environment Variables
 
 The opendatahub-operator injects the following environment variables into the
-`spark-operator-module` container.  These are the **only** inputs the module
-uses to configure the Spark Operator — it does not probe OLM or the cluster.
+`spark-operator-module` container.  The module does not probe OLM or the
+cluster to derive these values.
 
-| Env Var | Required | Description | Example Values |
-|---|---|---|---|
-| `ODH_MODULE_OPERATOR_PLATFORM_TYPE` | Yes | Platform type. Determines which overlay is selected. | `OpenDataHub`, `ManagedRhoai`, `SelfManagedRhoai` |
-| `APPLICATIONS_NAMESPACE` | Yes | Namespace where KSO resources are deployed. | `opendatahub`, `redhat-ods-applications` |
-| `RELATED_IMAGE_ODH_SPARK_OPERATOR_IMAGE` | Yes | The container image for both controller and webhook. | `quay.io/opendatahub/spark-operator:v2.5.1` |
+| Env Var | Required | Default | Description | Example Values |
+|---|---|---|---|---|
+| `ODH_MODULE_OPERATOR_PLATFORM_TYPE` | No | `OpenDataHub` | Platform type. Determines which overlay is selected. | `OpenDataHub`, `ManagedRhoai`, `SelfManagedRhoai`, `XKS` |
+| `ODH_PLATFORM_TYPE` | No | — | Legacy alias for `ODH_MODULE_OPERATOR_PLATFORM_TYPE`. Read only when the primary var is unset. | Same as above |
+| `APPLICATIONS_NAMESPACE` | No | `opendatahub` | Namespace where KSO resources are deployed. | `opendatahub`, `redhat-ods-applications` |
+| `RELATED_IMAGE_ODH_SPARK_OPERATOR_IMAGE` | Yes | — | The container image for both controller and webhook. | `quay.io/opendatahub/spark-operator:v2.5.1` |
+
+> **Resolution order for platform type:** The module reads
+> `ODH_MODULE_OPERATOR_PLATFORM_TYPE` first; if unset, it falls back to
+> the legacy `ODH_PLATFORM_TYPE`; if both are unset, it defaults to
+> `OpenDataHub`. See `spark-operator-module/pkg/sparkoperatormodule/platform.go`.
 
 ### Platform → Overlay Mapping
 
 | `ODH_MODULE_OPERATOR_PLATFORM_TYPE` | Overlay Selected |
 |---|---|
-| `OpenDataHub` (or unset) | `config/overlays/odh/` |
+| `OpenDataHub` (or unset / unknown) | `config/overlays/odh/` |
 | `ManagedRhoai` / `ManagedRHOAI` | `config/overlays/rhoai/` |
 | `SelfManagedRhoai` / `SelfManagedRHOAI` | `config/overlays/rhoai/` |
+| `XKS` | `config/overlays/odh/` |
 
 The mapping is implemented in
-`spark-operator-module/pkg/sparkoperatormodule/platform.go`.
+`spark-operator-module/pkg/sparkoperatormodule/platform.go`
+(`overlayForPlatform` and `parseInjectedPlatform`).
 
 ## Kustomize Overlay Structure
 
@@ -155,23 +166,23 @@ must reference the webhook `Service`:
 
 ## Contract Tests
 
-Automated contract tests in `test/overlay/overlay_contract_test.go` validate
+Automated contract tests in `test/kustomize/overlay_build_test.go` validate
 all of the above on every PR.  Run them locally:
 
 ```bash
-make overlay-contract-check
+make kustomize-lint
 ```
 
-These tests ensure that changes to `config/` do not silently break the ODH
-operator's deployment path.  The `TestParamsEnvConsistency` test additionally
+The `requiredOverlayResources` list in that file enumerates all 18 resources
+from the table above.  The `TestParamsEnvConsistency` test additionally
 verifies that all `params.env` files declare the same set of keys.
 
 ## Versioning and Breaking Changes
 
 When making changes that affect this contract:
 
-1. **Adding a new resource:** Add it to `baseRequiredResources` in
-   `test/overlay/overlay_contract_test.go` so the contract test catches
+1. **Adding a new resource:** Add it to `requiredOverlayResources` in
+   `test/kustomize/overlay_build_test.go` so the contract test catches
    future regressions.
 2. **Renaming a resource:** Update both the Kustomize manifests and the
    contract test.  Coordinate with the `spark-operator-module` team if
