@@ -12,14 +12,14 @@ tmpdir="$(mktemp -d)"
 trap 'rm -rf "$tmpdir"' EXIT
 
 openssl req -x509 -newkey rsa:2048 -sha256 -days 1 -nodes \
-	-keyout "${tmpdir}/tls.key" \
-	-out "${tmpdir}/tls.crt" \
-	-subj "/CN=spark-operator-metrics"
+  -keyout "${tmpdir}/tls.key" \
+  -out "${tmpdir}/tls.crt" \
+  -subj "/CN=spark-operator-metrics"
 
 for name in spark-operator-controller-metrics-certs spark-operator-webhook-metrics-certs; do
-	kubectl create secret tls "${name}" \
-		--namespace="${namespace}" \
-		--cert="${tmpdir}/tls.crt" \
-		--key="${tmpdir}/tls.key" \
-		--dry-run=client -o yaml | kubectl apply -f -
+  kubectl create secret tls "${name}" \
+    --namespace="${namespace}" \
+    --cert="${tmpdir}/tls.crt" \
+    --key="${tmpdir}/tls.key" \
+    --dry-run=client -o yaml | kubectl apply -f -
 done
