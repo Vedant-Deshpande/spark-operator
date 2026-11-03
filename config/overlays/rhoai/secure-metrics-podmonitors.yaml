@@ -1,0 +1,55 @@
+# Per-component HTTPS PodMonitors for secure metrics scraping.
+#
+# OpenShift service-CA certificates are issued for the metrics Service DNS
+# names, not for pod IPs. PodMonitor still discovers pods by IP, so each
+# endpoint must set tlsConfig.serverName to the matching Service DNS name
+# or Prometheus reports up=0 with "certificate does not contain any IP SANs".
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: spark-operator-controller-podmonitor
+  labels:
+    app.kubernetes.io/name: spark-operator
+    app.kubernetes.io/component: controller
+    app.kubernetes.io/managed-by: kustomize
+    opendatahub.io/monitoring: "true"
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: spark-operator
+      app.kubernetes.io/component: controller
+  podMetricsEndpoints:
+    - port: metrics
+      path: /metrics
+      scheme: https
+      tlsConfig:
+        serverName: spark-operator-controller-metrics.redhat-ods-applications.svc
+        ca:
+          configMap:
+            name: spark-operator-metrics-ca-bundle
+            key: service-ca.crt
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: spark-operator-webhook-podmonitor
+  labels:
+    app.kubernetes.io/name: spark-operator
+    app.kubernetes.io/component: webhook
+    app.kubernetes.io/managed-by: kustomize
+    opendatahub.io/monitoring: "true"
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: spark-operator
+      app.kubernetes.io/component: webhook
+  podMetricsEndpoints:
+    - port: metrics
+      path: /metrics
+      scheme: https
+      tlsConfig:
+        serverName: spark-operator-webhook-metrics.redhat-ods-applications.svc
+        ca:
+          configMap:
+            name: spark-operator-metrics-ca-bundle
+            key: service-ca.crt
