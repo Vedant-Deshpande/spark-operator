@@ -166,14 +166,19 @@ func TestOverlayBuilds(t *testing.T) {
 				require.NotNil(t, webhookDep, "Deployment/spark-operator-webhook not found in %s overlay", overlay.name)
 
 				for _, pmName := range []string{
-					"spark-operator-controller-podmonitor",
+					"spark-operator-podmonitor",
 					"spark-operator-webhook-podmonitor",
 				} {
 					podMonitor := overlayFindResource(resources, "PodMonitor", pmName)
 					require.NotNil(t, podMonitor, "PodMonitor/%s not found in %s overlay", pmName, overlay.name)
 				}
-				require.Nil(t, overlayFindResource(resources, "PodMonitor", "spark-operator-podmonitor"),
-					"shared PodMonitor/spark-operator-podmonitor should be deleted in %s overlay", overlay.name)
+			})
+
+			t.Run("PodMonitorUpgradeIdentity", func(t *testing.T) {
+				require.NotNil(t, overlayFindResource(resources, "PodMonitor", "spark-operator-podmonitor"),
+					"legacy PodMonitor name must be preserved so upgrades update the live object")
+				assert.Nil(t, overlayFindResource(resources, "PodMonitor", "spark-operator-controller-podmonitor"),
+					"a renamed controller PodMonitor would leave the legacy object behind during upgrades")
 			})
 
 			t.Run("NamespaceOverride", func(t *testing.T) {
@@ -251,7 +256,7 @@ func TestOverlayBuilds(t *testing.T) {
 
 			t.Run("PrometheusMonitoringLabel", func(t *testing.T) {
 				for _, pmName := range []string{
-					"spark-operator-controller-podmonitor",
+					"spark-operator-podmonitor",
 					"spark-operator-webhook-podmonitor",
 				} {
 					pm := overlayFindResource(resources, "PodMonitor", pmName)
@@ -393,7 +398,7 @@ func TestOverlayBuilds(t *testing.T) {
 				}
 				expectations := []podMonitorExpectation{
 					{
-						name:       "spark-operator-controller-podmonitor",
+						name:       "spark-operator-podmonitor",
 						component:  "controller",
 						serverName: "spark-operator-controller-metrics." + overlay.namespace + ".svc",
 					},

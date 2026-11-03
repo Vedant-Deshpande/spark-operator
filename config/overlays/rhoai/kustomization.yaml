@@ -21,14 +21,15 @@ resources:
   - networkpolicy-webhook.yaml
   - metrics-service.yaml
   - service-ca-bundle-configmap.yaml
-  - secure-metrics-podmonitors.yaml
+
+components:
+  - ../secure-metrics
 
 # 3. Delete the Namespace resource (RHOAI operator manages it)
-#    Replace the shared PodMonitor with per-component HTTPS PodMonitors
+#    Convert the shared PodMonitor and add a webhook HTTPS PodMonitor
 #    Preserve legacy Deployment selector labels for 3.5→3.6 upgrade (RHAI-10913)
 patches:
   - path: delete-namespace.yaml
-  - path: delete-podmonitor.yaml
   - path: networkpolicy-rbac-patch.yaml
     target:
       group: rbac.authorization.k8s.io
@@ -92,6 +93,24 @@ patches:
     target:
       kind: Deployment
       name: spark-operator-webhook
+  - patch: |-
+      - op: add
+        path: /spec/podMetricsEndpoints/0/tlsConfig/serverName
+        value: spark-operator-controller-metrics.redhat-ods-applications.svc
+    target:
+      group: monitoring.coreos.com
+      version: v1
+      kind: PodMonitor
+      name: spark-operator-podmonitor
+  - patch: |-
+      - op: add
+        path: /spec/podMetricsEndpoints/0/tlsConfig/serverName
+        value: spark-operator-webhook-metrics.redhat-ods-applications.svc
+    target:
+      group: monitoring.coreos.com
+      version: v1
+      kind: PodMonitor
+      name: spark-operator-webhook-podmonitor
 
 # 4. Add RHOAI-specific labels (metadata only, not selectors)
 labels:

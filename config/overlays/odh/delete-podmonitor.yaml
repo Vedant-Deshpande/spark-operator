@@ -1,9 +1,0 @@
-# Replace the shared HTTP PodMonitor with per-component HTTPS PodMonitors.
-# The base PodMonitor selects every spark-operator pod and has no serverName,
-# so Prometheus scrapes by pod IP and TLS verification fails against the
-# service-CA certificates minted for the metrics Services.
-$patch: delete
-apiVersion: monitoring.coreos.com/v1
-kind: PodMonitor
-metadata:
-  name: spark-operator-podmonitor
