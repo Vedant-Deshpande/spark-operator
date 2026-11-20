@@ -1,3 +1,17 @@
+# Copyright The Kubeflow Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 name: API contract
 
 # API contract compatibility checks for the Spark Operator CRDs
@@ -35,11 +49,14 @@ jobs:
 
   # CRD compatibility for the ODH SparkOperator module CRD
   # (components.platform.opendatahub.io/SparkOperator).
+  # This CRD was introduced after the spark-operator-2.4.0 GA release and
+  # does not exist at that baseline; the baseline is the current main HEAD
+  # at the time of onboarding.
   crd-contract-module:
     uses: red-hat-data-services/api-contract-tests/.github/workflows/provider-crd-check.yml@latest
     with:
       crd-glob: spark-operator-module/config/crd/components.platform.opendatahub.io_sparkoperators.yaml
-      baseline-refs: b43103900e5fcb2f665f1f16220edc49aa116c6c  # spark-operator-2.4.0
+      baseline-refs: 1ca80c029a780e3bb153a014c7f49fd916ec3834  # main HEAD at onboarding (2026-11-20); CRD absent at spark-operator-2.4.0
       mode: enforce
 
   # Every OpenAPI document and CRD manifest must be a contract, a generator
